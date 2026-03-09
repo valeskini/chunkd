@@ -1,58 +1,63 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
 )
 
-func findDifferences(oldHashes, newHashes [][32]byte) {
-    changedCount := 0
-    totalChunks := len(newHashes)
-
-    for i := 0; i < totalChunks; i++ {
-        if i >= len(oldHashes) || oldHashes[i] != newHashes[i] {
-            changedCount++
-            fmt.Printf("Chunk %d has changed!\n", i)
-        }
-    }
-
-    fmt.Printf("Change chunks: %d\n", changedCount)
-    fmt.Printf("Out of: %d\n", totalChunks)
-
-    percentage := float64(changedCount) / float64(totalChunks) * 100
-    fmt.Printf("Change rate: %.2f%%\n", percentage)
+func check(e error) {
+  if e != nil {
+      panic(e)
+  }
 }
 
 func main() {
-	file1, err1 := os.Open("bootstrap_log.txt")
-	file2, err2 := os.Open("bootstrap_log2.txt")
-	if err1 != nil || err2 != nil {
-		panic("Could not open files")
-	}
-	defer file1.Close()
-	defer file2.Close()
+	file, err := os.Open("bootstrap_log.txt")
+	check(err)
+	defer file.Close()
 
-	chunkSize := 0.3
+	os.MkdirAll("chunks", 0755)
+
+	chunkSize := 1024 * 4
 	buffer := make([]byte, chunkSize)
+	counter := 0
 
-	hashes1 := [][32]byte{}
-	hashes2 := [][32]byte{}
-
-	for {
-		n, err := file1.Read(buffer)
-		if err == io.EOF { break }
-		hash := sha256.Sum256(buffer[:n])
-		hashes1 = append(hashes1, hash)
-	}
+//	hashes := [][32]byte{}
 
 	for {
-		n, err := file2.Read(buffer)
+		n, err := file.Read(buffer)
 		if err == io.EOF { break }
-		hash := sha256.Sum256(buffer[:n])
-		hashes2 = append(hashes2, hash)
+
+		fileName := fmt.Sprintf("chunks/chunk.%d", counter)
+
+        os.WriteFile(fileName, buffer[:n], 0644)
+
+        fmt.Printf("saved: %s (%d Bytes)\n", fileName, n)
+        counter++
+
+//		hash := sha256.Sum256(buffer[:n])
+//		hashes = append(hashes, hash)
 	}
 
-	findDifferences(hashes1, hashes2)
+	rebuild()
+}
+
+func rebuild() {
+    outFile, _ := os.Create("rebuilt_log.txt")
+    defer outFile.Close()
+
+    counter := 0
+    for {
+        fileName := fmt.Sprintf("chunks/chunk.%d", counter)
+
+        data, err := os.ReadFile(fileName)
+        if err != nil {
+            fmt.Println("done")
+            break
+        }
+
+        outFile.Write(data)
+        counter++
+    }
 }
