@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
+	"encoding/json"
 )
 
 func check(e error) {
@@ -23,23 +25,27 @@ func main() {
 	buffer := make([]byte, chunkSize)
 	counter := 0
 
-//	hashes := [][32]byte{}
+	hashes := []string{}
 
 	for {
 		n, err := file.Read(buffer)
 		if err == io.EOF { break }
 
-		fileName := fmt.Sprintf("chunks/chunk.%d", counter)
+		hash := sha256.Sum256(buffer[:n])
+		fileName := fmt.Sprintf("chunks/chunk.%x", hash)
 
         os.WriteFile(fileName, buffer[:n], 0644)
 
         fmt.Printf("saved: %s (%d Bytes)\n", fileName, n)
         counter++
 
-//		hash := sha256.Sum256(buffer[:n])
-//		hashes = append(hashes, hash)
+        hashString := fmt.Sprintf("%x", hash)
+        hashes = append(hashes, hashString)
 	}
+	jsonData, err := json.MarshalIndent(hashes, "", "  ")
+	check(err)
 
+	os.WriteFile("manifest.json", jsonData, 0644)
 	rebuild()
 }
 
@@ -47,17 +53,16 @@ func rebuild() {
     outFile, _ := os.Create("rebuilt_log.txt")
     defer outFile.Close()
 
-    counter := 0
-    for {
-        fileName := fmt.Sprintf("chunks/chunk.%d", counter)
+    jsonData, _ := os.ReadFile("manifest.json")
 
-        data, err := os.ReadFile(fileName)
-        if err != nil {
-            fmt.Println("done")
-            break
-        }
+    var hashes []string
 
+    err := json.Unmarshal(jsonData, &hashes)
+    check(err)
+
+    for _, hash := range hashes {
+        fileName := fmt.Sprintf("chunks/chunk.%s", hash)
+        data, _ := os.ReadFile(fileName)
         outFile.Write(data)
-        counter++
     }
 }
